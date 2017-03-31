@@ -3,7 +3,7 @@
 
 # network_line_graph: visualisation to compare different states of a network.
 
-# Copyright (C) 2016 Paul Brodersen <paulbrodersen+netgraph@gmail.com>
+# Copyright (C) 2016 Paul Brodersen <paulbrodersen+network_line_graph@gmail.com>
 
 # Author: Paul Brodersen <paulbrodersen+network_line_graph@gmail.com>
 
@@ -34,6 +34,7 @@ in the network structure.
 """
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.cbook as cb
@@ -118,8 +119,8 @@ def draw(adjacency_matrix, node_order=None, node_labels=None, ax=None, **kwargs)
 
     node_positions = _get_positions(node_order)
 
-    draw_edges(adjacency_matrix, node_positions, **kwargs)
-    # draw_nodes(node_positions, **kwargs)
+    node_artists = draw_nodes(node_positions, **kwargs)
+    draw_edges(adjacency_matrix, node_positions, node_artists, **kwargs)
 
     if node_labels is not None:
         draw_node_labels(node_positions, node_labels)
@@ -134,16 +135,225 @@ def draw(adjacency_matrix, node_order=None, node_labels=None, ax=None, **kwargs)
 
     return
 
-def draw_nodes():
-    pass
-
 def _get_positions(node_order):
     n = len(node_order)
     node_positions = np.array(zip(node_order, np.zeros((n))))
     return node_positions
 
+def draw_nodes(node_positions,
+               node_shape='full',
+               node_size=10.,
+               node_edge_width=2.,
+               node_color='w',
+               node_edge_color='k',
+               cmap=None,
+               vmin=None,
+               vmax=None,
+               node_alpha=1.0,
+               ax=None,
+               **kwds):
+    """
+    Draw node markers at specified positions.
+
+    Arguments
+    ----------
+    node_positions : (n, 2) numpy.ndarray
+        iterable of (x,y) node positions
+
+    node_shape : string (default 'full')
+       The shape of the node. One of 'full', 'top half', 'bottom half'.
+
+    node_size : scalar or (n,) numpy array (default 3.)
+       Size (radius) of nodes.
+       A node size of 1 corresponds to a length of 0.01 in node position units.
+
+    node_edge_width : [scalar | sequence] (default 0.5)
+       Line width of node marker border.
+
+    node_color : color string, or array of floats (default 'w')
+       Node color. Can be a single color format string
+       or a sequence of colors with the same length as node_positions.
+       If numeric values are specified they will be mapped to
+       colors using the cmap and vmin/vmax parameters.
+
+    node_edge_color : color string, or array of floats (default 'k')
+       Node color. Can be a single color format string,
+       or a sequence of colors with the same length as node_positions.
+       If numeric values are specified they will be mapped to
+       colors using the cmap and vmin,vmax parameters.
+
+    cmap : Matplotlib colormap (default None)
+       Colormap for mapping intensities of nodes.
+
+    vmin, vmax : floats (default None)
+       Minimum and maximum for node colormap scaling.
+
+    alpha : float (default 1.)
+       The node transparency.
+
+    ax : Matplotlib Axes object, optional
+       Draw the graph in the specified Matplotlib axes.
+
+    Returns
+    -------
+    artists: dict
+        Dictionary mapping node index to the node face artist and node edge artist,
+        where both artists are instances of matplotlib.patches.
+        Node face artists are indexed with keys of the format (index, 'face'),
+        Node edge artists are indexed with keys (index, 'edge').
+
+    """
+
+    if ax is None:
+        ax = plt.gca()
+
+    # convert all node properties that not iterable into iterable formats
+    number_of_nodes = len(node_positions)
+    node_color = _parse_color_input(number_of_nodes, node_color, cmap, vmin, vmax, node_alpha)
+    node_edge_color = _parse_color_input(number_of_nodes, node_edge_color, cmap, vmin, vmax, node_alpha)
+
+    if isinstance(node_size, (int, float)):
+        node_size = node_size * np.ones((number_of_nodes))
+    if isinstance(node_edge_width, (int, float)):
+        node_edge_width = node_edge_width * np.ones((number_of_nodes))
+
+    # rescale
+    node_size = node_size.astype(np.float) * 1e-2
+    node_edge_width = node_edge_width.astype(np.float) * 1e-2
+
+    # circles made with plt.scatter scale with axis dimensions
+    # which in practice makes it hard to have one consistent layout
+    # -> use patches.Circle instead which creates circles that are in data coordinates
+    artists = dict()
+    for ii in range(number_of_nodes):
+        # simulate node edge by drawing a slightly larger node artist;
+        # I wish there was a better way to do this,
+        # but this seems to be the only way to guarantee constant proportions,
+        # as linewidth argument in matplotlib.patches will not be proportional
+        # to radius as it is in axis coordinates
+        node_edge_artist = _get_node_artist(shape=node_shape,
+                                            position=node_positions[ii],
+                                            size=node_size[ii],
+                                            facecolor=node_edge_color[ii],
+                                            zorder=2)
+        ax.add_artist(node_edge_artist)
+        artists[(ii, 'edge')] = node_edge_artist
+
+        # draw node
+        node_artist = _get_node_artist(shape=node_shape,
+                                       position=node_positions[ii],
+                                       size=node_size[ii] -node_edge_width[ii],
+                                       facecolor=node_color[ii],
+                                       zorder=2)
+        ax.add_artist(node_artist)
+        artists[(ii, 'face')] = node_artist
+
+    return artists
+
+def _get_node_artist(shape, position, size, facecolor, zorder=2):
+    if shape == 'full': # full circle
+        artist = matplotlib.patches.Circle(xy=position,
+                                           radius=size,
+                                           facecolor=facecolor,
+                                           linewidth=0.,
+                                           zorder=zorder)
+    elif shape == 'top half':
+        NotImplementedError
+    elif shape == 'bottom half':
+        NotImplementedError
+    else:
+        raise ValueError("Node shape one of: 'o'. Current shape:{}".format(shape))
+
+    return artist
+
+# verbatim in netgraph
+def draw_node_labels(node_positions,
+                     node_labels,
+                     font_size=8,
+                     font_color='k',
+                     font_family='sans-serif',
+                     font_weight='normal',
+                     font_alpha=1.,
+                     bbox=None,
+                     clip_on=False,
+                     ax=None,
+                     **kwargs):
+    """
+    Draw node labels.
+
+    Arguments
+    ---------
+    node_positions : (n, 2) numpy.ndarray
+        (x, y) node coordinates.
+
+    node_labels : dict
+       Dictionary mapping node indices to labels.
+       Only nodes in the dictionary are labelled.
+
+    font_size : int (default 12)
+       Font size for text labels
+
+    font_color : string (default 'k')
+       Font color string
+
+    font_family : string (default='sans-serif')
+       Font family
+
+    font_weight : string (default='normal')
+       Font weight
+
+    font_alpha : float (default 1.)
+       Text transparency
+
+    bbox : Matplotlib bbox
+       Specify text box shape and colors.
+
+    clip_on : bool
+       Turn on clipping at axis boundaries (default=False)
+
+    ax : matplotlib.axis instance or None (default None)
+       Draw the graph in the specified Matplotlib axis.
+
+    Returns
+    -------
+    artists: dict
+        Dictionary mapping node indices to text objects.
+
+    @reference
+    Borrowed with minor modifications from networkx/drawing/nx_pylab.py
+
+    """
+
+    if ax is None:
+        ax = plt.gca()
+
+    # set optional alignment
+    horizontalalignment = kwargs.get('horizontalalignment', 'center')
+    verticalalignment = kwargs.get('verticalalignment', 'center')
+
+    artists = dict()  # there is no text collection so we'll fake one
+    for ii, label in node_labels.iteritems():
+        x, y = node_positions[ii]
+        text_object = ax.text(x, y,
+                              label,
+                              size=font_size,
+                              color=font_color,
+                              alpha=font_alpha,
+                              family=font_family,
+                              weight=font_weight,
+                              horizontalalignment=horizontalalignment,
+                              verticalalignment=verticalalignment,
+                              transform=ax.transData,
+                              bbox=bbox,
+                              clip_on=False)
+        artists[ii] = text_object
+
+    return artists
+
+
 def draw_edges(adjacency_matrix,
                node_positions,
+               node_artists=None,
                edge_width=2.,
                edge_color='k',
                edge_cmap=None,
@@ -167,12 +377,10 @@ def draw_edges(adjacency_matrix,
     node_positions : (n, 2) numpy.ndarray
         (x, y) node coordinates
 
-    node_size : scalar or (n,) numpy.ndarray (default 0.)
-        Size (radius) of nodes. Used to offset edges when drawing arrow heads,
-        such that the arrow heads are not occluded.
-        Nota bene: in draw_nodes() the node_size default is 3.!
-        If draw_nodes() and draw_edges() are called independently,
-        make sure to set this variable to the same value.
+    node_artists: dictionary
+        Container of node_artists as returned by draw_nodes() or None (default None).
+        If node artists are provided, edges start and end at the edge of the node artist,
+        not at the node positions (i.e. their centre).
 
     edge_width : float, or (n, n) numpy.ndarray (default 2.)
         Line width of edges.
@@ -255,8 +463,10 @@ def draw_edges(adjacency_matrix,
     # plot edges
     artists = dict()
     for (source, target) in edge_list:
-        artists[(source, target)] = _add_edge(node_positions[source],
-                                              node_positions[target],
+        artists[(source, target)] = _add_edge(source,
+                                              target,
+                                              node_positions,
+                                              node_artists=node_artists,
                                               edge_width=edge_width[source, target],
                                               edge_color=edge_color[source, target],
                                               arc_above=arc_above,
@@ -270,7 +480,18 @@ def _adjacency_to_list(adjacency_matrix):
     edge_list = zip(sources.tolist(), targets.tolist())
     return edge_list
 
-def _add_edge(source_pos, target_pos, edge_width, edge_color, arc_above, draw_arrows, ax):
+def _add_edge(source, target,
+              node_positions,
+              node_artists,
+              edge_width,
+              edge_color,
+              arc_above,
+              draw_arrows,
+              ax):
+
+    source_pos = node_positions[source]
+    target_pos = node_positions[target]
+
     # base radius expressed as a fraction of the half-distance between nodes
     rad = 1.
 
@@ -292,9 +513,15 @@ def _add_edge(source_pos, target_pos, edge_width, edge_color, arc_above, draw_ar
     else:
         arrowstyle = "fancy,head_length={},head_width={},tail_width={}".format(1e-10, 1e-10, edge_width)
 
+    if node_artists:
+        patchA = node_artists[(source, 'edge')]
+        patchB = node_artists[(target, 'edge')]
+
     arrow = FancyArrowPatch(source_pos, target_pos,
                             connectionstyle="arc3,rad={}".format(rad),
                             arrowstyle=arrowstyle,
+                            patchA=patchA,
+                            patchB=patchB,
                             facecolor=edge_color,
                             edgecolor='none')
     ax.add_patch(arrow)
@@ -321,10 +548,13 @@ def _update_view(adjacency_matrix, node_positions, ax):
     w = maxx-minx
     h = maxy-miny
     padx, pady = 0.05*w, 0.05*h
-    corners = (minx-padx, miny-pady), (maxx+padx, maxy+pady)
 
-    ax.update_datalim(corners)
-    ax.autoscale_view()
+    # corners = (minx-padx, miny-pady), (maxx+padx, maxy+pady)
+    # ax.update_datalim(corners)
+    # ax.autoscale_view()
+    ax.set_xlim(minx-padx, maxx+padx)
+    ax.set_ylim(miny-pady, maxy+pady)
+
     ax.get_figure().canvas.draw()
     return
 
@@ -334,7 +564,7 @@ def _get_distance(source_pos, target_pos):
     d = np.sqrt(dx**2 + dy**2)
     return d
 
-# verbatim copy of netgraph._parse_color_input
+# verbatim in netgraph
 def _parse_color_input(number_of_elements, color_spec,
                        cmap=None, vmin=None, vmax=None, alpha=1.):
     """
@@ -366,7 +596,6 @@ def _parse_color_input(number_of_elements, color_spec,
         Array of RGBA color specifications.
 
     """
-
     # map color_spec to either a list of strings or
     # an iterable of floats of the correct length,
     # unless, of course, they already are either of these
@@ -389,10 +618,11 @@ def _parse_color_input(number_of_elements, color_spec,
 
     return rgba_array
 
+# verbatim in netgraph
 def _make_pretty(ax):
     ax.set_xticks([])
     ax.set_yticks([])
-    # ax.set_aspect('equal') # <- only difference to version in netgraph
+    ax.set_aspect('equal')
     ax.get_figure().set_facecolor('w')
     ax.set_frame_on(False)
     ax.get_figure().canvas.draw()
@@ -408,7 +638,7 @@ def test(n=20, p=0.15, ax=None, directed=True, **kwargs):
 
     return ax
 
-# verbatim from netgraph
+# verbatim in netgraph
 def _get_random_weight_matrix(n, p,
                               weighted=True,
                               strictly_positive=False,
