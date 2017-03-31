@@ -144,8 +144,7 @@ def _get_positions(node_order):
 
 def draw_edges(adjacency_matrix,
                node_positions,
-               arc_above=True,
-               edge_width=1.,
+               edge_width=2.,
                edge_color='k',
                edge_cmap=None,
                edge_vmin=None,
@@ -153,6 +152,7 @@ def draw_edges(adjacency_matrix,
                edge_alpha=1.,
                edge_zorder=None,
                ax=None,
+               arc_above=True,
                draw_arrows=True,
                **arrow_kwargs):
     """
@@ -174,7 +174,7 @@ def draw_edges(adjacency_matrix,
         If draw_nodes() and draw_edges() are called independently,
         make sure to set this variable to the same value.
 
-    edge_width : float, or (n, n) numpy.ndarray (default 1.)
+    edge_width : float, or (n, n) numpy.ndarray (default 2.)
         Line width of edges.
 
     edge_color : color string, or (n, n) numpy.ndarray or (n, n, 4) numpy.ndarray (default: 'k')
@@ -200,8 +200,11 @@ def draw_edges(adjacency_matrix,
     ax : matplotlib.axis instance or None (default None)
         Draw the graph in the specified Matplotlib axis.
 
+    arc_above: bool, optional (default True)
+        If True, draw edges arcing above x-axis.
+
     draw_arrows : bool, optional (default True)
-        If True, draws edges with arrow heads.
+        If True, draw edges with arrow heads.
 
     Returns
     -------
