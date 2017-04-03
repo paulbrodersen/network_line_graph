@@ -41,9 +41,6 @@ import matplotlib.cbook as cb
 from matplotlib.colors import colorConverter, Colormap
 from matplotlib.patches import FancyArrowPatch, Circle
 
-def draw_comparison():
-    pass
-
 def draw(adjacency_matrix, node_order=None, node_labels=None, ax=None, **kwargs):
     """
     Convenience function that tries to do "the right thing".
@@ -108,19 +105,25 @@ def draw(adjacency_matrix, node_order=None, node_labels=None, ax=None, **kwargs)
         weights /= 2. # [0, 1]
 
         kwargs.setdefault('edge_color', weights)
-        kwargs.setdefault('edge_vmin', 0.)
-        kwargs.setdefault('edge_vmax', 1.)
+        # kwargs.setdefault('edge_vmin', 0.)
+        # kwargs.setdefault('edge_vmax', 1.)
+        kwargs['edge_vmin'] = 0.
+        kwargs['edge_vmax'] = 1.
         kwargs.setdefault('edge_cmap', 'RdGy')
         kwargs.setdefault('edge_zorder', edge_zorder)
 
     number_of_nodes = adjacency_matrix.shape[0]
+
     if node_order is None:
-        node_order = np.arange(number_of_nodes)
+        try:
+            node_order = _optimize_node_order(adjacency_matrix)
+        except:
+            node_order = np.arange(number_of_nodes)
 
     node_positions = _get_positions(node_order)
 
     node_artists = draw_nodes(node_positions, **kwargs)
-    draw_edges(adjacency_matrix, node_positions, node_artists, **kwargs)
+    edge_artists = draw_edges(adjacency_matrix, node_positions, node_artists, **kwargs)
 
     if node_labels is not None:
         draw_node_labels(node_positions, node_labels)
@@ -140,10 +143,44 @@ def _get_positions(node_order):
     node_positions = np.array(zip(node_order, np.zeros((n))))
     return node_positions
 
+def _optimize_node_order(adjacency_matrix):
+    """
+    Improve node order by grouping strongly connected nodes closer to each other.
+    Essentially, the graph is recursively partitioned using minimum flow cuts and
+    the order of the nodes in the resulting hierarchical clustering is returned.
+    """
+
+    import networkx
+
+    # make networkx compatible
+    w = adjacency_matrix.copy()
+    w[np.isnan(w)] = 0.
+
+    # graph cuts only implemented for undirected graphs with positive weights
+    # in networkx
+    w = np.abs(w)
+    w = w + w.T
+
+    g = networkx.from_numpy_matrix(w)
+    cut_value, partitions = networkx.stoer_wagner(g)
+    while np.max([len(p) for p in partitions]) > 2:
+        new_partitions = []
+        for ii, p in enumerate(partitions):
+            if len(p) <= 2:
+                new_partitions.append(p)
+            else:
+                c, (p0, p1) = networkx.stoer_wagner(g.subgraph(p))
+                new_partitions.append(p0)
+                new_partitions.append(p1)
+        partitions = new_partitions
+
+    node_order = np.concatenate(partitions)
+    return node_order
+
 def draw_nodes(node_positions,
                node_shape='full',
-               node_size=10.,
-               node_edge_width=2.,
+               node_size=20.,
+               node_edge_width=4.,
                node_color='w',
                node_edge_color='k',
                cmap=None,
@@ -350,7 +387,6 @@ def draw_node_labels(node_positions,
 
     return artists
 
-
 def draw_edges(adjacency_matrix,
                node_positions,
                node_artists=None,
@@ -507,12 +543,12 @@ def _add_edge(source, target,
     if arc_above:
         rad *= -1
 
-    # draw
     if draw_arrows:
         arrowstyle = "fancy,head_length={},head_width={},tail_width={}".format(2*edge_width, 3*edge_width, edge_width)
-    else:
+    else: # make arrow heads really small
         arrowstyle = "fancy,head_length={},head_width={},tail_width={}".format(1e-10, 1e-10, edge_width)
 
+    # stop edges from being plotted on top or bottom of node artists;
     if node_artists:
         patchA = node_artists[(source, 'edge')]
         patchB = node_artists[(target, 'edge')]
@@ -628,16 +664,6 @@ def _make_pretty(ax):
     ax.get_figure().canvas.draw()
     return
 
-def test(n=20, p=0.15, ax=None, directed=True, **kwargs):
-    w = _get_random_weight_matrix(n, p, directed=directed)
-
-    # plot
-    fig, ax = plt.subplots(1,1)
-    draw(w, node_order=range(n), ax=ax)
-    plt.show()
-
-    return ax
-
 # verbatim in netgraph
 def _get_random_weight_matrix(n, p,
                               weighted=True,
@@ -667,5 +693,68 @@ def _get_random_weight_matrix(n, p,
 
     if dales_law and weighted and not strictly_positive:
         w = np.abs(w) * np.sign(np.random.randn(n))[:,None]
-
     return w
+
+def test(n=20, p=0.1, ax=None, directed=True, **kwargs):
+    # create two networks that are similar to each other
+    # by combining a common core network with two different networks
+    w1 = _get_random_weight_matrix(n, p/2., directed=directed)
+    w2 = _get_random_weight_matrix(n, p/2., directed=directed)
+    w3 = _get_random_weight_matrix(n, p/2., directed=directed)
+
+    for w in [w1,w2,w3]:
+        w[np.isnan(w)] = 0.
+
+    w12 = w1 + w2
+    w23 = w2 + w3
+
+    w123 = w1+w2+w3 # for plotting
+
+    for w in [w12, w23, w123]:
+        w[w==0] = np.nan
+
+    # node_order = range(n)
+    node_order = _optimize_node_order(w123)
+
+    fig, ax = plt.subplots(1,1)
+
+    max_val = 3.
+    draw(w12, node_order=node_order, ax=ax, arc_above=True, edge_vmin=-max_val, edge_vmax=max_val)
+    draw(w23, node_order=node_order, ax=ax, arc_above=False, edge_vmin=-max_val, edge_vmax=max_val)
+    plt.show()
+
+    return ax
+
+def _get_modular_weight_matrix(module_sizes, p_in=0.5, p_ex=0.1):
+    n = np.sum(module_sizes)
+    c = np.random.rand(n,n) < p_ex
+    w = np.random.randn(n,n)
+    w[~c] = 0.
+
+    start = np.cumsum(np.concatenate([[0], module_sizes]))[:-1]
+    stop = np.cumsum(np.concatenate([[0], module_sizes]))[1:]
+
+    for ii, s in enumerate(module_sizes):
+        ww = np.random.randn(s,s)
+        cc = np.random.rand(s,s) < p_in - p_ex
+        ww[~cc] = 0.
+        w[start[ii]:stop[ii], start[ii]:stop[ii]] += ww
+
+    fig, ax = plt.subplots(1,1)
+    ax.imshow(w, cmap='gray', interpolation='none')
+    w[w==0] = np.nan
+    return w
+
+def test_modular_graph():
+    w = _get_modular_weight_matrix([10,10], p_in=0.9, p_ex=0.1)
+    optimal_order = _optimize_node_order(w)
+    random_order = np.random.permutation(optimal_order)
+
+    fig, ax = plt.subplots(1,1)
+
+    max_val = 3.
+    draw(w, node_order=optimal_order, ax=ax, arc_above=True, edge_vmin=-max_val, edge_vmax=max_val)
+    draw(w, node_order=random_order, ax=ax, arc_above=False, edge_vmin=-max_val, edge_vmax=max_val)
+    plt.show()
+
+    return
