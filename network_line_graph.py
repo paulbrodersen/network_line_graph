@@ -42,8 +42,7 @@ from matplotlib.colors import colorConverter, Colormap
 from matplotlib.patches import FancyArrowPatch, Circle
 
 def draw(adjacency_matrix, node_order=None, node_labels=None, ax=None, **kwargs):
-    """
-    Convenience function that tries to do "the right thing".
+    """Convenience function that tries to do "the right thing".
 
     For a full list of available arguments, and
     for finer control of the individual draw elements,
@@ -59,8 +58,11 @@ def draw(adjacency_matrix, node_order=None, node_labels=None, ax=None, **kwargs)
     adjacency_matrix: (n, n) numpy.ndarray
         Adjacency or weight matrix of the network.
 
-    node_positions : (n, 2) numpy.ndarray
-        (x, y) node coordinates.
+    node_order : (n, ) numpy.ndarray
+        Order in which the nodes are plotted along the x-axis.
+        If unspecified and networkx is installed, the node order is
+        set such that nodes, which are strongly connected with each
+        other, occur close in the node order.
 
     ax : matplotlib.axis instance or None (default None)
        Axis to plot onto; if none specified, one will be instantiated with plt.gca().
@@ -162,16 +164,16 @@ def _optimize_node_order(adjacency_matrix):
     w = w + w.T
 
     g = networkx.from_numpy_matrix(w)
-    cut_value, partitions = networkx.stoer_wagner(g)
+    partitions = [range(len(w))]
     while np.max([len(p) for p in partitions]) > 2:
         new_partitions = []
-        for ii, p in enumerate(partitions):
-            if len(p) <= 2:
-                new_partitions.append(p)
-            else:
-                c, (p0, p1) = networkx.stoer_wagner(g.subgraph(p))
-                new_partitions.append(p0)
+        for ii, p0 in enumerate(partitions):
+            if len(p0) > 2:
+                c, (p1, p2) = networkx.stoer_wagner(g.subgraph(p0))
                 new_partitions.append(p1)
+                new_partitions.append(p2)
+            else: # nothing to partition
+                new_partitions.append(p0)
         partitions = new_partitions
 
     node_order = np.concatenate(partitions)
@@ -299,7 +301,7 @@ def _get_node_artist(shape, position, size, facecolor, zorder=2):
     elif shape == 'bottom half':
         NotImplementedError
     else:
-        raise ValueError("Node shape one of: 'o'. Current shape:{}".format(shape))
+        raise ValueError("Node shape one of: 'full'. Current shape:{}".format(shape))
 
     return artist
 
@@ -577,7 +579,7 @@ def _update_view(adjacency_matrix, node_positions, ax):
     # maxy also depends on longest arc
     edge_list = _adjacency_to_list(adjacency_matrix)
     distances = [_get_distance(node_positions[source], node_positions[target]) for source, target in edge_list]
-    max_arc_height = np.max(distances) / 2.
+    max_arc_height = 1.1*np.max(distances) / 2.
     maxy += max_arc_height
     miny -= max_arc_height
 
@@ -698,9 +700,9 @@ def _get_random_weight_matrix(n, p,
 def test(n=20, p=0.1, ax=None, directed=True, **kwargs):
     # create two networks that are similar to each other
     # by combining a common core network with two different networks
-    w1 = _get_random_weight_matrix(n, p/2., directed=directed)
-    w2 = _get_random_weight_matrix(n, p/2., directed=directed)
-    w3 = _get_random_weight_matrix(n, p/2., directed=directed)
+    w1 = _get_random_weight_matrix(n, p/3., directed=directed)
+    w2 = _get_random_weight_matrix(n, 2*p/3., directed=directed)
+    w3 = _get_random_weight_matrix(n, p/3., directed=directed)
 
     for w in [w1,w2,w3]:
         w[np.isnan(w)] = 0.
@@ -721,11 +723,14 @@ def test(n=20, p=0.1, ax=None, directed=True, **kwargs):
     max_val = 3.
     draw(w12, node_order=node_order, ax=ax, arc_above=True, edge_vmin=-max_val, edge_vmax=max_val)
     draw(w23, node_order=node_order, ax=ax, arc_above=False, edge_vmin=-max_val, edge_vmax=max_val)
+
+    ax.text(0,1, 'Before', transform=ax.transAxes, fontsize=18)
+    ax.text(0,0, 'After', transform=ax.transAxes, fontsize=18)
     plt.show()
 
     return ax
 
-def _get_modular_weight_matrix(module_sizes, p_in=0.5, p_ex=0.1):
+def _get_modular_weight_matrix(module_sizes, p_in=0.5, p_ex=0.1, show_plot=False):
     n = np.sum(module_sizes)
     c = np.random.rand(n,n) < p_ex
     w = np.random.randn(n,n)
@@ -740,8 +745,10 @@ def _get_modular_weight_matrix(module_sizes, p_in=0.5, p_ex=0.1):
         ww[~cc] = 0.
         w[start[ii]:stop[ii], start[ii]:stop[ii]] += ww
 
-    fig, ax = plt.subplots(1,1)
-    ax.imshow(w, cmap='gray', interpolation='none')
+    if show_plot:
+        fig, ax = plt.subplots(1,1)
+        ax.imshow(w, cmap='gray', interpolation='none')
+
     w[w==0] = np.nan
     return w
 
