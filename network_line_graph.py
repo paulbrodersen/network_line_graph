@@ -162,16 +162,16 @@ def _optimize_node_order(adjacency_matrix):
     w = w + w.T
 
     g = networkx.from_numpy_matrix(w)
-    cut_value, partitions = networkx.stoer_wagner(g)
+    partitions = [range(len(w))]
     while np.max([len(p) for p in partitions]) > 2:
         new_partitions = []
-        for ii, p in enumerate(partitions):
-            if len(p) <= 2:
-                new_partitions.append(p)
-            else:
-                c, (p0, p1) = networkx.stoer_wagner(g.subgraph(p))
-                new_partitions.append(p0)
+        for ii, p0 in enumerate(partitions):
+            if len(p0) > 2:
+                c, (p1, p2) = networkx.stoer_wagner(g.subgraph(p0))
                 new_partitions.append(p1)
+                new_partitions.append(p2)
+            else: # nothing to partition
+                new_partitions.append(p0)
         partitions = new_partitions
 
     node_order = np.concatenate(partitions)
@@ -299,7 +299,7 @@ def _get_node_artist(shape, position, size, facecolor, zorder=2):
     elif shape == 'bottom half':
         NotImplementedError
     else:
-        raise ValueError("Node shape one of: 'o'. Current shape:{}".format(shape))
+        raise ValueError("Node shape one of: 'full'. Current shape:{}".format(shape))
 
     return artist
 
