@@ -177,9 +177,7 @@ def draw(adjacency_matrix, node_order=None, node_labels=None, ax=None, **kwargs)
     return
 
 def _get_positions(node_order):
-    n = len(node_order)
-    node_positions = np.array(zip(node_order, np.zeros((n))))
-    return node_positions
+    return np.c_[node_order, np.zeros((len(node_order)))]
 
 def _optimize_node_order(adjacency_matrix):
     """
@@ -525,7 +523,7 @@ def draw_edges(adjacency_matrix,
         edge_color = edge_color.reshape([number_of_nodes, number_of_nodes, 4])
 
     sources, targets = np.where(~np.isnan(adjacency_matrix))
-    edge_list = zip(sources.tolist(), targets.tolist())
+    edge_list = list(zip(sources.tolist(), targets.tolist()))
 
     # order if necessary
     if edge_zorder is None:
