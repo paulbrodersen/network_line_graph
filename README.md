@@ -1,3 +1,12 @@
+# NOTE
+
+This package is superseded by `netgraph`, my much more feature complete network visualisation library, which can be found [here](https://github.com/paulbrodersen/netgraph).
+An example of how to draw arc diagrams / network line graphs with `netgraph` can be found [here](https://netgraph.readthedocs.io/en/latest/sphinx_gallery_output/plot_13_arcdiagram.html#sphx-glr-sphinx-gallery-output-plot-13-arcdiagram-py). The full API for the `ArcDiagram` class and interactive variants is documented [here](https://netgraph.readthedocs.io/en/latest/arcdiagram_classes.html). The implementation in netgraph supports much better customisation, and has a number of interactive features: the positions of nodes can be adjusted by dragging them with a mouse, and nodes and edges can be added interactively, as well as labelled. Furthermore, by default, nodes are arranged such that the number of edge crossings is minimised, which typically improves the readability of the resulting visualisations.
+
+Development on this repository has stopped, but feel free to continue to use it.
+
+---
+
 # Network Line Graph
 
 Visualise a network by assigning nodes a position along the
